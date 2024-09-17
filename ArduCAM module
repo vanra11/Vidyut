@@ -1,0 +1,54 @@
+#include <ArduCAM.h>
+#include <Wire.h>
+
+#define CS 10  // Chip Select pin for ArduCAM
+#define WIDTH 640
+#define HEIGHT 480
+
+ArduCAM myCAM(OV2640, CS); // Initialize ArduCAM with OV2640 camera module
+bool capturing = false;
+
+void setup() {
+  Serial.begin(115200); // Initialize serial communication
+  Wire.begin(); // Initialize I2C communication
+
+  myCAM.write_reg(ARDUCHIP_TEST1, 0x55); // Test if the camera module is functioning
+  if(myCAM.read_reg(ARDUCHIP_TEST1) == 0x55) {
+    Serial.println("Camera OK!");
+  } else {
+    Serial.println("Camera not detected!");
+    while(1);
+  }
+
+  myCAM.InitCAM(); // Initialize the camera module
+  myCAM.OV2640_set_JPEG_size(OV2640_640x480); // Set image size
+  myCAM.clear_fifo_flag(); // Clear FIFO flag
+}
+
+void loop() {
+  if (!capturing) {
+    myCAM.flush_fifo(); // Flush the FIFO buffer
+    myCAM.start_capture(); // Start capturing
+    capturing = true; // Set flag to indicate capture has started
+  }
+
+  if(myCAM.get_bit(ARDUCHIP_TRIG, CAP_DONE_MASK)) { // If capture is complete
+    capturing = false; // Reset capture flag
+    uint32_t length = myCAM.read_fifo_length(); // Get length of the captured image
+    uint8_t* image_data = (uint8_t*)malloc(length); // Allocate memory for the image
+    if (image_data != NULL) {
+      myCAM.CS_LOW(); // Set CS pin low
+      myCAM.set_fifo_burst(); // Set FIFO burst mode
+      myCAM.CS_HIGH(); // Set CS pin high
+      myCAM.CS_LOW(); // Set CS pin low
+      myCAM.read_fifo_burst(image_data, length); // Read image data from FIFO
+      myCAM.CS_HIGH(); // Set CS pin high
+      
+      // Process image_data here (e.g., send over serial, perform image processing)
+      
+      free(image_data); // Free memory allocated for image
+    } else {
+      Serial.println("Memory allocation failed!");
+    }
+  }
+}
