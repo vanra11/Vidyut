@@ -37,3 +37,49 @@ uint8_t GPS_Compute(void) {
         }
       }
     }
+int16_t speed = 0;                   //Desired navigation speed
+
+      switch(NAV_state)                    //Navigation state machine
+        {
+        case NAV_STATE_NONE:               //Just for clarity, do nothing when nav_state is none
+          break;
+
+        case NAV_STATE_LAND_START:
+          GPS_calc_poshold();              //Land in position hold
+          land_settle_timer = millis();
+          NAV_state = NAV_STATE_LAND_SETTLE;
+          break;
+
+        case NAV_STATE_LAND_SETTLE:
+          GPS_calc_poshold();
+          if (millis()-land_settle_timer > 5000)
+            NAV_state = NAV_STATE_LAND_START_DESCENT;
+          break;
+
+        case NAV_STATE_LAND_START_DESCENT:
+          GPS_calc_poshold();                //Land in position hold
+          f.THROTTLE_IGNORED = 1;            //Ignore Throtte stick input
+          f.GPS_BARO_MODE    = 1;            //Take control of BARO mode
+          land_detect = 0;                   //Reset land detector
+          f.LAND_COMPLETED = 0;
+          f.LAND_IN_PROGRESS = 1;            // Flag land process
+
+if ((wp_distance <= GPS_conf.wp_radius) || check_missed_wp()) {               //This decides what happen when we reached the WP coordinates 
+            if (mission_step.action == MISSION_LAND) {                                  //Autoland
+              NAV_state = NAV_STATE_LAND_START;                                         //Start landing
+              set_new_altitude(alt.EstAlt);                                             //Stop any altitude changes
+            } else if (mission_step.flag == MISSION_FLAG_END) {                         //If this was the last mission step (flag set by the mission planner), then switch to poshold
+              NAV_state = NAV_STATE_HOLD_INFINIT;
+              NAV_error = NAV_ERROR_FINISH;
+            } else if (mission_step.action == MISSION_HOLD_UNLIM) {                     //If mission_step was POSHOLD_UNLIM and we reached the position then switch to poshold unlimited
+              NAV_state = NAV_STATE_HOLD_INFINIT;
+              NAV_error = NAV_ERROR_FINISH;
+            } else if (mission_step.action == MISSION_HOLD_TIME) {                      //If mission_step was a timed poshold then initiate timed poshold
+              nav_hold_time = mission_step.parameter1;
+              nav_timer_stop = 0;                                                       //This indicates that we are starting a timed poshold
+              NAV_state = NAV_STATE_HOLD_TIMED;
+            } else {
+              NAV_state = NAV_STATE_PROCESS_NEXT;                                       //Otherwise process next step
+            }
+          }
+          break;
